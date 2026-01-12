@@ -258,7 +258,7 @@ tab_dash, tab_compare, tab_pred = st.tabs(["📊 Dashboard", "🏆 Model Compari
 # TAB 1: DASHBOARD (Monthly first, then Daily; remove monthly price trend plot)
 # ============================================================
 with tab_dash:
-    st.subheader("📊 Dashboard : Trends & Insights")
+    st.subheader("📊 Dashboard : Trend & Insight")
 
     if not os.path.exists(DEFAULT_MERGED_DATA_PATH):
         stop_with_error(f"Missing merged dataset file: {DEFAULT_MERGED_DATA_PATH}")
@@ -280,19 +280,21 @@ with tab_dash:
     # 1) MONTHLY analysis FIRST
     # ----------------------------
     df_monthly = to_monthly(merged_df)
+    df_monthly = df_monthly[df_monthly["Month"] <= MAX_DATE].copy()
+
 
     if df_monthly.empty:
         st.warning("Monthly data is empty after aggregation.")
         st.stop()
 
     min_m = df_monthly["Month"].min()
-    max_m = df_monthly["Month"].max()
+    max_m = min(df_monthly["Month"].max(), MAX_DATE)
 
     start_date, end_date = st.date_input(
-        "Month range",
-        value=(min_m.date(), max_m.date()),
-        min_value=min_m.date(),
-        max_value=max_m.date(),
+    "Month range",
+    value=(min_m.date(), MAX_DATE.date()),   # ✅ default end = 31-05-2022
+    min_value=min_m.date(),
+    max_value=MAX_DATE.date(),               # ✅ max end = 31-05-2022 (FORCED)
     )
 
     mask = (df_monthly["Month"].dt.date >= start_date) & (df_monthly["Month"].dt.date <= end_date)
