@@ -131,6 +131,23 @@ def load_merged_dataset(path_or_file) -> pd.DataFrame:
             df[c] = pd.to_numeric(df[c], errors="coerce")
     return df
 
+@st.cache_data(show_spinner=False)
+def compute_feature_defaults(merged_csv_path: str, feature_names: list[str]) -> dict:
+    df = pd.read_csv(merged_csv_path)
+    # Convert columns to numeric when possible
+    for c in feature_names:
+        if c in df.columns:
+            df[c] = pd.to_numeric(df[c], errors="coerce")
+    # Mean defaults (fallback to 0.0 if missing)
+    defaults = {}
+    for c in feature_names:
+        if c in df.columns:
+            m = df[c].mean(skipna=True)
+            defaults[c] = float(m) if pd.notnull(m) else 0.0
+        else:
+            defaults[c] = 0.0
+    return defaults
+
 def to_monthly(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df["Month"] = df[COL_DATE].dt.to_period("M").dt.to_timestamp()
@@ -191,26 +208,13 @@ tab_dash, tab_compare, tab_pred = st.tabs(["📊 Dashboard", "🏆 Model Compari
 # ============================================================
 with tab_dash:
     st.subheader("📊 Dashboard : Monthly Trends")
-    st.caption("This tab uses a merged dataset CSV. If you don’t have it, you can still use Model Comparison and Prediction.")
 
     merged_df = None
-    cA, cB = st.columns([1, 1])
-    with cA:
-        use_local = st.checkbox("Use local merged dataset", value=True)
-    with cB:
-        uploaded = st.file_uploader("Or upload merged dataset CSV", type=["csv"])
 
     try:
-        if use_local and file_exists(DEFAULT_MERGED_DATA_PATH):
-            merged_df = load_merged_dataset(DEFAULT_MERGED_DATA_PATH)
-            st.success(f"Loaded: {DEFAULT_MERGED_DATA_PATH}")
-        elif uploaded is not None:
-            merged_df = load_merged_dataset(uploaded)
-            st.success("Loaded uploaded merged dataset.")
-        else:
-            st.info("No merged dataset loaded. Put it at `data/final_merged_palm_oil_dataset.csv` or upload it here.")
+        merged_df = load_merged_dataset(DEFAULT_MERGED_DATA_PATH)
     except Exception as e:
-        st.error(f"Failed to load merged dataset: {e}")
+        st.error(f"Failed to load merged dataset : {e}")
         merged_df = None
 
     if merged_df is not None:
@@ -295,94 +299,115 @@ with tab_compare:
         plt.xticks(rotation=25, ha="right")
         st.pyplot(fig, clear_figure=True)
 
-# ============================================================
-# TAB 3: PREDICTION (Inputs + Outcome in SAME TAB ✅)
-# ============================================================
+# ============================
+# TAB 3: PREDICTION (Inputs first, horizon below)
+# ============================
 with tab_pred:
-    st.subheader("🧠 Prediction (Input & Outcome)")
-    st.caption(f"Model used: {best_model_name} ")
+    st.subheader("🧠 Palm Oil Price Estimation")
 
-    mode = st.radio("Mode", ["Single prediction", "Batch prediction (CSV)"], horizontal=True)
+    # Big visible model banner
+    st.markdown(
+        f"""
+        <div style="padding:12px 14px; border-radius:14px; background:#f3f6ff; border:1px solid #dbe4ff;">
+          <div style="font-size:20px; font-weight:850;">Model used: {best_model_name}</div>
+          <div style="font-size:12.5px; opacity:0.8;">
+            Short-term estimation under assumed stable conditions (trained on 2020–2022).
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+    st.write("")
 
-    if mode == "Single prediction":
-        st.markdown("### Set Paramerters for Single Prediction")
-        st.caption(
-            "The year is used as a time context for prediction. "
-            "This model does not automatically forecast future dates.")
-        inputs = {}
-        cols = st.columns(2)
-        for i, feat in enumerate(feature_names):
-            with cols[i % 2]:
-                inputs[feat] = st.number_input(feat, value=0.0, step=0.1, key=f"single_{feat}")
+    # Defaults
+    defaults = compute_feature_defaults(DEFAULT_MERGED_DATA_PATH, feature_names)
+    FORCE_ZERO_DEFAULTS = {"Index Production", "Export Number (in Tonnes)"}
 
-        c1, c2 = st.columns([1, 1])
-        with c1:
-            do_pred = st.button("Predict Price ✅")
-        with c2:
-            reset = st.button("Reset output")
+    # ----------------------------
+    # 1) Inputs FIRST
+    # ----------------------------
+    st.markdown("### Set Parameters for Single Prediction")
+    st.caption("Default values use the dataset mean (except Production & Export start at 0). You can adjust any value.")
 
-        if reset:
-            st.session_state.single_pred_value = None
-            st.session_state.single_pred_inputs = None
+    inputs = {}
+    cols = st.columns(2, gap="large")
 
-        if do_pred:
-            try:
-                pred = predict_one(inputs)
-                st.session_state.single_pred_value = pred
-                st.session_state.single_pred_inputs = inputs
-                st.session_state.batch_pred_df = None
-            except Exception as e:
-                st.error(f"Prediction failed: {e}")
+    for i, feat in enumerate(feature_names):
+        # Remove Year from UI (we fix it internally)
+        if feat.lower() == "year":
+            continue
 
-        st.divider()
-        st.markdown("### Outcome")
-        if st.session_state.single_pred_value is None:
-            st.info("No prediction yet. Fill values and click Predict.")
+        # Force 0 for selected fields, else mean
+        if feat in FORCE_ZERO_DEFAULTS:
+            default_val = 0.0
         else:
-            st.metric("Predicted Palm Oil Price per Tonne", f"RM {st.session_state.single_pred_value:,.2f}")
-            with st.expander("Show inputs used"):
-                st.json(st.session_state.single_pred_inputs)
+            default_val = float(defaults.get(feat, 0.0))
 
+        with cols[i % 2]:
+            inputs[feat] = st.number_input(
+                feat,
+                value=default_val,
+                step=0.1,
+                key=f"single_{feat}"
+            )
+
+    # Fix Year internally (avoid long-term extrapolation)
+    if "Year" in feature_names:
+        inputs["Year"] = 2022
+
+    st.write("")
+
+    # ----------------------------
+    # 2) Horizon BELOW inputs
+    # ----------------------------
+    st.markdown("### Prediction Horizon (Days Ahead)")
+    days_ahead = st.slider(
+        "Days ahead",
+        min_value=1,
+        max_value=14,   # ✅ recommend 7–14 max
+        value=1,
+        step=1
+    )
+    st.caption(
+        "This is a short-term interpretation label. The model assumes conditions remain similar unless you modify inputs."
+    )
+
+    # ----------------------------
+    # Buttons
+    # ----------------------------
+    c1, c2 = st.columns([1, 1])
+    with c1:
+        do_pred = st.button("Predict Price ✅")
+    with c2:
+        reset = st.button("Reset output")
+
+    if reset:
+        st.session_state.single_pred_value = None
+        st.session_state.single_pred_inputs = None
+        st.session_state.pred_meta = None
+
+    if do_pred:
+        try:
+            pred = predict_one(inputs)
+            st.session_state.single_pred_value = pred
+            st.session_state.single_pred_inputs = inputs
+            st.session_state.pred_meta = {"days_ahead": days_ahead}
+        except Exception as e:
+            st.error(f"Prediction failed: {e}")
+
+    # ----------------------------
+    # Outcome
+    # ----------------------------
+    st.divider()
+    st.markdown("### Outcome")
+
+    if st.session_state.single_pred_value is None:
+        st.info("No prediction yet. Adjust values and click Predict.")
     else:
-        st.markdown("### Upload CSV for batch prediction")
-        st.caption("CSV must include ALL feature columns in feature_names.json (same names).")
-        up = st.file_uploader("Upload CSV", type=["csv"])
-
-        if st.button("Reset batch output"):
-            st.session_state.batch_pred_df = None
-
-        if up is not None:
-            try:
-                df_in = pd.read_csv(up)
-                missing_feats = [f for f in feature_names if f not in df_in.columns]
-                if missing_feats:
-                    st.error("Missing columns:\n" + "\n".join([f"- {m}" for m in missing_feats]))
-                else:
-                    X = df_in[feature_names].copy()
-                    X = X.apply(pd.to_numeric, errors="coerce")
-
-                    if X.isnull().any().any():
-                        st.warning("Some values became NaN after numeric conversion. Clean/fill missing values for best results.")
-
-                    X_scaled = scaler.transform(X)
-                    preds = model.predict(X_scaled)
-
-                    out = df_in.copy()
-                    out["Predicted_Price"] = preds
-
-                    st.session_state.batch_pred_df = out
-                    st.session_state.single_pred_value = None
-                    st.session_state.single_pred_inputs = None
-            except Exception as e:
-                st.error(f"Batch prediction failed: {e}")
-
-        st.divider()
-        st.markdown("### Outcome")
-        if st.session_state.batch_pred_df is None:
-            st.info("No batch results yet. Upload a CSV to generate predictions.")
-        else:
-            st.success("Batch predictions ready ✅")
-            st.dataframe(st.session_state.batch_pred_df, use_container_width=True)
-
-            csv_bytes = st.session_state.batch_pred_df.to_csv(index=False).encode("utf-8")
-            st.download_button("Download predictions CSV", data=csv_bytes, file_name="predictions.csv", mime="text/csv")
+        meta = st.session_state.pred_meta or {"days_ahead": days_ahead}
+        st.metric(
+            f"Predicted Palm Oil Price per Tonne (in {meta['days_ahead']} day(s))",
+            f"RM {st.session_state.single_pred_value:,.2f}"
+        )
+        with st.expander("Show inputs used"):
+            st.json(st.session_state.single_pred_inputs)
