@@ -306,6 +306,9 @@ with tab_pred:
 
     if mode == "Single prediction":
         st.markdown("### Set Paramerters for Single Prediction")
+        st.caption(
+            "The year is used as a time context for prediction. "
+            "This model does not automatically forecast future dates.")
         inputs = {}
         cols = st.columns(2)
         for i, feat in enumerate(feature_names):
@@ -336,7 +339,7 @@ with tab_pred:
         if st.session_state.single_pred_value is None:
             st.info("No prediction yet. Fill values and click Predict.")
         else:
-            st.metric("Predicted Palm Oil Price", f"RM {st.session_state.single_pred_value:,.2f}")
+            st.metric("Predicted Palm Oil Price per Tonne", f"RM {st.session_state.single_pred_value:,.2f}")
             with st.expander("Show inputs used"):
                 st.json(st.session_state.single_pred_inputs)
 
