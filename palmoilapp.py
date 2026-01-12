@@ -33,8 +33,8 @@ OPTIONAL_COLS = ["Temp", "Humidity", "USD"]
 # ----------------------------
 # Streamlit config
 # ----------------------------
-st.set_page_config(page_title="Palm Oil ML App", layout="wide")
-st.title("🌴 Palm Oil ML Dashboard (Fast Demo)")
+st.set_page_config(page_title="Palm Oil Price Prediction App", layout="wide")
+st.title("🌴 Palm Oil Price Forecasting Dashboard for Malaysia ")
 
 # ----------------------------
 # Utility helpers
@@ -190,8 +190,8 @@ tab_dash, tab_compare, tab_pred = st.tabs(["📊 Dashboard", "🏆 Model Compari
 # TAB 1: DASHBOARD (optional merged dataset)
 # ============================================================
 with tab_dash:
-    st.subheader("📊 Dashboard (Monthly EDA)")
-    st.caption("This tab uses a merged dataset CSV. If you don’t have it, you can still use Model Comparison + Prediction.")
+    st.subheader("📊 Dashboard : Monthly Trends")
+    st.caption("This tab uses a merged dataset CSV. If you don’t have it, you can still use Model Comparison and Prediction.")
 
     merged_df = None
     cA, cB = st.columns([1, 1])
@@ -237,33 +237,33 @@ with tab_dash:
             else:
                 k1, k2, k3, k4 = st.columns(4)
                 k1.metric("Months", f"{len(df_m):,}")
-                k2.metric("Avg Price", f"{df_m[COL_PRICE].mean():,.2f}")
-                k3.metric("Avg Production", f"{df_m[COL_PROD].mean():,.2f}")
+                k2.metric("Average Price ", f"RM {df_m[COL_PRICE].mean():,.2f}")
+                k3.metric("Average Production", f"{df_m[COL_PROD].mean():,.2f}")
                 k4.metric("Total Export", f"{df_m[COL_EXPORT].sum():,.0f}")
 
                 st.divider()
-                st.markdown("### 1) Price Over Time (Monthly Mean)")
-                line_plot(df_m["Month"], df_m[COL_PRICE], "Palm Oil Price (Monthly Mean)", "Price")
+                st.markdown("### Palm Oil Monthly Price Trend")
+                line_plot(df_m["Month"], df_m[COL_PRICE], "Palm Oil Price (Monthly Mean)", "Price (in RM)")
 
-                st.markdown("### 2) Production Over Time (Monthly Mean)")
-                line_plot(df_m["Month"], df_m[COL_PROD], "Index Production (Monthly Mean)", "Index Production")
+                st.markdown("### Production Monthly Index Trend")
+                line_plot(df_m["Month"], df_m[COL_PROD], "Production Index (Monthly Mean)", "Production Index")
 
-                st.markdown("### 3) Export Over Time (Monthly Total)")
+                st.markdown("### Export Monthly Volume Trend")
                 line_plot(df_m["Month"], df_m[COL_EXPORT], "Export Volume (Monthly Total)", "Export Number (in Tonnes)")
 
                 st.divider()
-                st.markdown("### 4) Relationship: Price vs Production")
-                scatter_plot(df_m[COL_PROD], df_m[COL_PRICE], "Price vs Production (Monthly)", "Index Production", "Price")
+                st.markdown("### Price-Production Relationships")
+                scatter_plot(df_m[COL_PROD], df_m[COL_PRICE], "Palm Oil Price vs Production (Monthly)", "Production Index", "Price (in RM)")
 
-                st.markdown("### 5) Relationship: Rainfall vs Production")
-                scatter_plot(df_m[COL_PRECIP], df_m[COL_PROD], "Rainfall vs Production (Monthly)", "Precip", "Index Production")
+                st.markdown("### Rainfall-Prodcution Relationships")
+                scatter_plot(df_m[COL_PRECIP], df_m[COL_PROD], "Rainfall vs Production (Monthly)", "Rainfall", "Production Index")
 
                 st.divider()
-                st.markdown("### 6) Correlation Heatmap (Monthly)")
+                st.markdown("### Feature Correlation Overview (Monthly)")
                 heat_cols = [COL_PRICE, COL_PROD, COL_EXPORT, COL_PRECIP] + [c for c in OPTIONAL_COLS if c in df_m.columns]
-                corr_heatmap(df_m.dropna(subset=heat_cols), heat_cols, "Correlation Matrix (Monthly)")
+                corr_heatmap(df_m.dropna(subset=heat_cols), heat_cols, "Monthly Feature Correlation Matrix")
 
-                with st.expander("Preview monthly data"):
+                with st.expander("View Monthly Dataset"):
                     st.dataframe(df_m, use_container_width=True)
 
 # ============================================================
@@ -299,13 +299,13 @@ with tab_compare:
 # TAB 3: PREDICTION (Inputs + Outcome in SAME TAB ✅)
 # ============================================================
 with tab_pred:
-    st.subheader("🧠 Prediction (Input + Outcome)")
-    st.caption(f"Model used: {best_model_name} (loaded from artifacts)")
+    st.subheader("🧠 Prediction (Input & Outcome)")
+    st.caption(f"Model used: {best_model_name} ")
 
     mode = st.radio("Mode", ["Single prediction", "Batch prediction (CSV)"], horizontal=True)
 
     if mode == "Single prediction":
-        st.markdown("### Enter feature values")
+        st.markdown("### Set Paramerters for Single Prediction")
         inputs = {}
         cols = st.columns(2)
         for i, feat in enumerate(feature_names):
@@ -336,7 +336,7 @@ with tab_pred:
         if st.session_state.single_pred_value is None:
             st.info("No prediction yet. Fill values and click Predict.")
         else:
-            st.metric("Predicted Palm Oil Price", f"{st.session_state.single_pred_value:,.2f}")
+            st.metric("Predicted Palm Oil Price", f"RM {st.session_state.single_pred_value:,.2f}")
             with st.expander("Show inputs used"):
                 st.json(st.session_state.single_pred_inputs)
 
